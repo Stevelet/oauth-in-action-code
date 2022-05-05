@@ -32,7 +32,7 @@ let clients = [
 	{
 		"client_id": "oauth-client-1",
 		"client_secret": "oauth-client-secret-1",
-		"redirect_uris": ["http://localhost:9000/callback"],
+		"redirect_uris": ["http://localhost:9000/callback", "https://redgrasp.test/oauth_client/callback"],
 		"scope": "openid profile email phone address"
 	}
 ];
@@ -189,17 +189,27 @@ app.post('/approve', function(req, res) {
 });
 
 app.post("/token", function(req, res){
-
 	let auth = req.headers['authorization'];
+	let clientId = undefined;
+	let clientCredentials = undefined;
+	let clientSecret = undefined;
+
+	let body = undefined
+	if (Object.keys(req.body).length === 1) {
+		body = JSON.parse(Object.keys(req.body)[0])
+	} else {
+		body = req.body
+	}
+
 	if (auth) {
 		// check the auth header
-		let clientCredentials = decodeClientCredentials(auth);
-		let clientId = clientCredentials.id;
-		let clientSecret = clientCredentials.secret;
+		clientCredentials = decodeClientCredentials(auth);
+		clientId = clientCredentials.id;
+		clientSecret = clientCredentials.secret;
 	}
 
 	// otherwise, check the post body
-	if (req.body.client_id) {
+	if (body.client_id) {
 		if (clientId) {
 			// if we've already seen the client's credentials in the authorization header, this is an error
 			console.log('Client attempted to authenticate with multiple methods');
@@ -207,8 +217,8 @@ app.post("/token", function(req, res){
 			return;
 		}
 
-		let clientId = req.body.client_id;
-		let clientSecret = req.body.client_secret;
+		clientId = body.client_id;
+		clientSecret = body.client_secret;
 	}
 
 	let client = getClient(clientId);
@@ -224,12 +234,12 @@ app.post("/token", function(req, res){
 		return;
 	}
 
-	if (req.body.grant_type === 'authorization_code') {
+	if (body.grant_type === 'authorization_code') {
 
-		let code = codes[req.body.code];
+		let code = codes[body.code];
 
 		if (code) {
-			delete codes[req.body.code]; // burn our code, it's been used
+			delete codes[body.code]; // burn our code, it's been used
 			if (code.request.client_id === clientId) {
 
 				let header = { 'typ': 'JWT', 'alg': rsaKey.alg, 'kid': rsaKey.kid};
@@ -271,7 +281,7 @@ app.post("/token", function(req, res){
 				}
 
 				res.status(200).json(token_response);
-				console.log('Issued tokens for code %s', req.body.code);
+				console.log('Issued tokens for code %s', body.code);
 
 				return;
 			} else {
@@ -317,7 +327,10 @@ let decodeClientCredentials = function(auth) {
 	let clientCredentials = Buffer.from(auth.slice('basic '.length), 'base64').toString().split(':');
 	let clientId = querystring.unescape(clientCredentials[0]);
 	let clientSecret = querystring.unescape(clientCredentials[1]);
-	return { id: clientId, secret: clientSecret };
+
+	let hash = { id: clientId, secret: clientSecret }
+
+	return hash;
 };
 
 app.use('/', express.static('files/authorizationServer'));
@@ -331,4 +344,3 @@ let server = app.listen(9001, 'localhost', function () {
 
 	console.log('OAuth Authorization Server is listening at http://%s:%s', host, port);
 });
-
